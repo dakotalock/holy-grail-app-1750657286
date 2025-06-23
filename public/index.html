@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EchoChat: A Simple Full Stack Netlify Bot</title>
+    <!-- Tailwind CSS CDN for utility-first styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /*
+         * Custom scrollbar styling for the chat display area.
+         * This enhances the user experience by making the scrollbar
+         * more visually appealing and consistent across browsers.
+         */
+        .chat-area::-webkit-scrollbar {
+            width: 8px; /* Width of the scrollbar */
+        }
+        .chat-area::-webkit-scrollbar-track {
+            background: #f1f1f1; /* Color of the scrollbar track */
+            border-radius: 10px; /* Rounded corners for the track */
+        }
+        .chat-area::-webkit-scrollbar-thumb {
+            background: #888; /* Color of the scrollbar thumb */
+            border-radius: 10px; /* Rounded corners for the thumb */
+        }
+        .chat-area::-webkit-scrollbar-thumb:hover {
+            background: #555; /* Color of the thumb on hover */
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-r from-blue-500 to-purple-600 min-h-screen flex items-center justify-center p-4">
+
+    <!-- Main chat container -->
+    <div class="bg-white rounded-lg shadow-xl w-full max-w-lg flex flex-col h-[80vh] md:h-[70vh] lg:h-[60vh]">
+
+        <!-- Header section displaying the application title -->
+        <header class="bg-gradient-to-r from-blue-600 to-purple-700 text-white p-4 rounded-t-lg shadow-md">
+            <h1 class="text-2xl font-bold text-center">EchoChat: A Simple Full Stack Netlify Bot</h1>
+        </header>
+
+        <!-- Chat display area where messages will appear -->
+        <div id="chat-display" class="flex-1 p-4 overflow-y-auto space-y-4 chat-area">
+            <!-- Initial message from the bot to greet the user -->
+            <div class="flex justify-start">
+                <div class="bg-gray-200 text-gray-800 p-3 rounded-lg max-w-[75%] shadow-sm">
+                    Hello! I am EchoChat, a simple bot. Type something to me!
+                </div>
+            </div>
+        </div>
+
+        <!-- Area for displaying status messages (e.g., "Sending...", "Error:") -->
+        <div id="status-message" class="text-sm text-center py-2 px-4 text-gray-600"></div>
+
+        <!-- Message input field and send button -->
+        <div class="p-4 border-t border-gray-200 flex items-center space-x-2">
+            <input type="text" id="user-input" placeholder="Type your message..."
+                   class="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <button id="send-button"
+                    class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
+                Send
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Get references to key DOM elements for easy access
+        const chatDisplay = document.getElementById('chat-display');
+        const userInput = document.getElementById('user-input');
+        const sendButton = document.getElementById('send-button');
+        const statusMessageDiv = document.getElementById('status-message');
+
+        /**
+         * Adds a new message bubble to the chat display area.
+         * It dynamically creates and styles message elements based on the sender.
+         *
+         * @param {string} text - The actual message content to display.
+         * @param {'user' | 'bot'} sender - Specifies who sent the message ('user' or 'bot').
+         */
+        function addMessageToChat(text, sender) {
+            const messageDiv = document.createElement('div');
+            // Apply flexbox classes to align messages (user messages to the right, bot to the left)
+            messageDiv.className = `flex ${sender === 'user' ? 'justify-end' : 'justify-start'}`;
+
+            const messageBubble = document.createElement('div');
+            // Apply Tailwind classes for styling the message bubble itself
+            messageBubble.className = `p-3 rounded-lg max-w-[75%] shadow-sm ${
+                sender === 'user' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-800'
+            }`;
+            messageBubble.textContent = text; // Set the message text
+
+            messageDiv.appendChild(messageBubble); // Add the bubble to the message container
+            chatDisplay.appendChild(messageDiv);    // Add the message container to the chat display
+
+            // Automatically scroll to the bottom to show the latest message
+            chatDisplay.scrollTop = chatDisplay.scrollHeight;
+        }
+
+        /**
+         * Displays a temporary status or permanent error message in the status area.
+         *
+         * @param {string} message - The status message to display.
+         * @param {boolean} [isError=false] - If true, the message is styled as an error and persists.
+         *                                    If false, it's a temporary status that clears after 3 seconds.
+         */
+        function showStatus(message, isError = false) {
+            statusMessageDiv.textContent = message; // Set the status text
+            // Apply styling based on whether it's an error or a regular status
+            statusMessageDiv.className = `text-sm text-center py-2 px-4 ${isError ? 'text-red-600' : 'text-gray-600'}`;
+
+            // If it's not an error message, clear it after a short delay
+            if (!isError) {
+                setTimeout(() => {
+                    statusMessageDiv.textContent = ''; // Clear the message
+                }, 3000); // Clear after 3 seconds
+            }
+        }
+
+        /**
+         * Asynchronously sends the user's message to the backend API.
+         * Handles displaying the user's message, showing loading states,
+         * processing the bot's response, and managing errors.
+         */
+        async function sendMessage() {
+            const userMessage = userInput.value.trim(); // Get message and remove leading/trailing whitespace
+
+            // Basic validation: prevent sending empty messages
+            if (!userMessage) {
+                showStatus('Please type a message before sending.', true);
+                return; // Stop execution if message is empty
+            }
+
+            // 1. Display user's message immediately for a responsive feel
+            addMessageToChat(userMessage, 'user');
+            userInput.value = ''; // Clear the input field after sending
+
+            // 2. Show loading state to provide user feedback
+            sendButton.disabled = true; // Disable button to prevent multiple submissions
+            sendButton.textContent = 'Sending...'; // Change button text
+            sendButton.classList.add('opacity-50', 'cursor-not-allowed'); // Apply disabled visual styles
+            showStatus('Waiting for bot response...'); // Display a loading status
+
+            try {
+                // 3. Make the API call to the Netlify Function using the Fetch API
+                // The URL '/api/chat-bot' is handled by netlify.toml redirect to the actual function.
+                const response = await fetch('/api/chat-bot', {
+                    method: 'POST', // As per API specification
+                    headers: {
+                        'Content-Type': 'application/json', // Indicate JSON body
+                    },
+                    body: JSON.stringify({ message: userMessage }), // Send user message as JSON
+                });
+
+                // 4. Check if the HTTP response was successful (status 2xx)
+                if (!response.ok) {
+                    // If not OK, parse the error response from the backend
+                    const errorData = await response.json();
+                    // Use the backend's error message or a generic one
+                    const errorMessage = errorData.error || `HTTP error! Status: ${response.status}`;
+                    throw new Error(errorMessage); // Throw an error to be caught below
+                }
+
+                // 5. Parse the successful JSON response from the bot
+                const data = await response.json();
+                const botResponse = data.botResponse; // Extract the bot's reply
+
+                // 6. Display the bot's response
+                if (botResponse) {
+                    addMessageToChat(botResponse, 'bot');
+                    showStatus('Message received!'); // Indicate success
+                } else {
+                    // Handle cases where botResponse might be missing or empty
+                    showStatus('Bot response was empty or malformed.', true);
+                }
+
+            } catch (error) {
+                // 7. Handle any errors during the fetch operation (network issues, API errors)
+                console.error('Error sending message:', error);
+                showStatus(`Error: ${error.message || 'Could not connect to bot.'}`, true);
+            } finally {
+                // 8. Always reset the loading state regardless of success or failure
+                sendButton.disabled = false; // Re-enable the button
+                sendButton.textContent = 'Send'; // Reset button text
+                sendButton.classList.remove('opacity-50', 'cursor-not-allowed'); // Remove disabled styles
+                // The status message will automatically clear if it was a non-error status.
+                // If it was an error, it remains visible until the next interaction.
+            }
+        }
+
+        // Event Listeners: Trigger sendMessage on button click or Enter key press
+        sendButton.addEventListener('click', sendMessage);
+        userInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+
+    <div style="position:fixed;bottom:10px;right:10px;background:rgba(0,0,0,0.7);color:white;padding:5px 10px;border-radius:5px;font-family:sans-serif;font-size:12px">
+        Created by Dakota Rain Lock, powered by Holy Grail. A Dakota Rain Lock Invention.
+    </div>
+    
+</body>
+</html>
